@@ -1,0 +1,313 @@
+O:8:"stdClass":1:{s:2:"so";O:8:"stdClass":8:{s:5:"title";s:39:"Using Angular Augury to Debug Your Code";s:4:"link";s:52:"https://www.sitepoint.com/angular-augury-debug-code/";s:11:"description";s:9604:"<div><p><strong>Augury is an open-source tool <a href="https://augury.angular.io/pages/guides/augury.html">allowing developers to profile and debug</a> Angular 2 and 4 applications.</strong></p>
+<p>Modern web browsers provide developer consoles to inspect various elements on the page, which is really handy when trying to debug markup, styles, and scripts. However, this console isn&rsquo;t enough to debug Angular applications that usually have lots of components, events, attributes, and a separate routing system.</p>
+<p><a href="https://augury.angular.io/">Augury</a> is a tool designed specifically for Angular apps. It&rsquo;s an open-source debugging and profiling tool for <a href="http://angular.io/">Angular 2+</a> applications.</p>
+<p>Augury is just a Chrome extension that&rsquo;s quite simple to use, so you won&rsquo;t need to spend hours and hours learning how to utilize this tool. We&rsquo;re going to build a sample Angular app and then see Augury in action by exploring various parts of our project. So, let&rsquo;s get started!</p>
+<h2 id="helloaugury">Hello, Augury!</h2>
+<p>Augury visualizes your app&rsquo;s structure in a form of a tree, showing how components and their dependencies relate to each other. It also allows you to inspect properties of your objects and change them on the fly. On top of that, you can easily view the source code of a specific component, insert breakpoints as needed, work with events, and more. Lastly, you can browse the application&rsquo;s routing system, as well as view the full list of all utilized modules.</p>
+<p>Augury is only available as a Chrome extension (there&rsquo;s no Firefox support yet, unfortunately) and installing it is as simple as going to <a href="https://chrome.google.com/webstore/detail/augury/elgalmkoelokbchhkhacckoklkejnhcd">this page</a> and pressing the <em>Install</em> button. After that, you may open the developer tools by pressing <kbd>Ctrl</kbd> + <kbd>Shift</kbd> + <kbd>I</kbd> (Windows/Linux) or <kbd>Cmd</kbd> + <kbd>Opt</kbd> + <kbd>I</kbd> (macOS). You&rsquo;ll note that a new tab called <em>Augury</em> has appeared. After switching to this tab, you&rsquo;ll either see the application&rsquo;s structure or the phrase &ldquo;This application is not an Angular application&rdquo;. I&rsquo;ve noticed that sometimes it may be required to re-open the Developer Console in order for Augury to analyze the page properly, so watch out.</p>
+<p>Now that we have Augury installed, let&rsquo;s proceed to the next section and prepare the sample application that we&rsquo;ll use as a playground!</p>
+<h2 id="buildingasampleapp">Building a Sample App</h2>
+<p>In order to see Augury in action, we need something to debug, right? In this section, I&rsquo;m going to quickly guide you through the process of creating a very simple application (loosely based on the sample app from the <a href="https://angular.io/tutorial/">Angular&rsquo;s official tutorial</a>) listing some users and allowing you to edit them. Alternatively, you may grab the source code from <a href="https://github.com/bodrovis/Sitepoint-source/tree/master/Debugging_Angular_With_Augury">my GitHub repo</a>.</p>
+<p>Before getting started, install <a href="https://github.com/angular/angular-cli">Angular CLI</a> on your machine if you don&rsquo;t have it yet:</p>
+<pre><code class="bash language-bash">npm install -g @angular/cli
+</code></pre>
+<p>Next, create the skeleton of our new project:</p>
+<pre><code class="bash language-bash">ng new sitepoint-augury
+</code></pre>
+<p>Change the application&rsquo;s title by tweaking the <em>src/app/app.component.ts</em> file:</p>
+<pre><code class="typescript language-typescript">// ...
+
+export class AppComponent {
+  title = 'Augury Demo';
+}
+</code></pre>
+<p>Tweak the <code>src/app/app.component.html</code> by removing all the links to documentation added automatically by code generator and add an <code>&lt;app-users&gt;&lt;/app-users&gt;</code> line:</p>
+<pre><code class="markup language-markup">&lt;div style="text-align:center"&gt;
+  &lt;h1&gt;
+    Welcome to {{ title }}!
+  &lt;/h1&gt;
+&lt;/div&gt;
+
+&lt;app-users&gt;&lt;/app-users&gt;
+</code></pre>
+<p>Of course, we need a <code>User</code> component, so generate it now by running:</p>
+<pre><code class="bash language-bash">ng generate component users
+</code></pre>
+<p>Change the <code>src/app/users/user.component.ts</code> file in the following way:</p>
+<pre><code class="typescript language-typescript">import { Component, OnInit } from '@angular/core';
+import { User } from './user.model'; // &lt;--- 1
+import { UserService } from './user.service'; // &lt;--- 2
+
+@Component({
+  selector: 'app-users',
+  templateUrl: './users.component.html',
+  styleUrls: ['./users.component.css']
+})
+export class UsersComponent implements OnInit {
+  users: User[];
+
+  selectedUser: User;
+
+  onSelect(user: User): void { // &lt;--- 3
+    this.selectedUser = user;
+  }
+
+  constructor(private userService: UserService) { } // &lt;--- 4
+
+  ngOnInit() {
+    this.getUsers(); // &lt;--- 5
+  }
+
+  getUsers(): void { // &lt;--- 6
+    this.users = this.userService.getUsers();
+  }
+
+}
+</code></pre>
+<p>Main things to note here:</p>
+<ol><li>We are importing a <code>User</code> model that will be created in a moment.</li>
+<li>We&rsquo;re also importing a <code>UserService</code>. It will simply return a list of hardcoded users, but let&rsquo;s pretend they&rsquo;re being fetched from some remote location.</li>
+<li>We&rsquo;re allowing the users to be selected by clicking on them. The currently selected user is stored in a separate <code>selectedUser</code> attribute.</li>
+<li>Hook up the <code>userService</code> using the dependency injection mechanism.</li>
+<li>Load the list of users once the component is initialized.</li>
+<li>In order to get users, we&rsquo;re utilizing our <code>userService</code>.</li>
+</ol><p>That&rsquo;s pretty much it for this component.</p>
+<p>Next, let&rsquo;s create a model in a <code>src/app/users/user.model.ts</code> file. Each user is going to have an ID, a first and a last name:</p>
+<pre><code class="typescript language-typescript">export class User {
+  id: number;
+  first: string;
+  last: string;
+}
+</code></pre>
+<p>Nothing complex.</p>
+<p>Now let&rsquo;s proceed to the <code>UserService</code> that&rsquo;s going to be defined in the <code>app/src/users/user.service.ts</code> file:</p>
+<pre><code class="typescript language-typescript">import { Injectable } from '@angular/core';
+import { User } from './user.model';
+
+@Injectable()
+export class UserService {
+
+  constructor() { }
+
+  getUsers(): User[] {
+    return [
+      {
+        id: 1,
+        first: 'John',
+        last: 'Doe'
+      },
+      {
+        id: 2,
+        first: 'Margaret',
+        last: 'Brown'
+      }
+    ]
+  }
+}
+</code></pre>
+<p>The <code>getUsers</code> method simply returns an array of users with hardcoded data.</p>
+<p>Now let&rsquo;s display our users with the help of <code>ngFor</code>. Also, we&rsquo;re going to add a click event listener and fire <code>onSelect</code> whenever a user is clicked on. When this happens, a form to edit the chosen user should be displayed (which is going to be done with the help of <code>ngIf</code>). Modify the <code>src/app/users/user.component.html</code> file like this:</p>
+<pre><code class="javascript language-javascript">&lt;div *ngFor="let user of users" (click)="onSelect(user)"
+[class.selected]="user === selectedUser"&gt;
+  &lt;p&gt;{{user.last}}, {{user.first}} (ID: {{user.id}})&lt;/p&gt;
+&lt;/div&gt;
+
+&lt;div *ngIf="selectedUser"&gt;
+  &lt;h3&gt;Edit&lt;/h3&gt;
+  &lt;label for="first"&gt;First&lt;/label&gt;
+  &lt;input [(ngModel)]="selectedUser.first" placeholder="First name" id="first"&gt;
+
+  &lt;label for="last"&gt;Last&lt;/label&gt;
+  &lt;input [(ngModel)]="selectedUser.last" placeholder="Last name" id="last"&gt;
+&lt;/div&gt;
+</code></pre>
+<p>We&rsquo;re assigning a <code>.selected</code> CSS class to the chosen user, so let&rsquo;s add some simple styling for it inside the <code>src/app/users/user.component.css</code> file:</p>
+<pre><code class="css language-css">.selected {
+  font-weight: bold;
+}
+</code></pre>
+<p>Lastly, we have to import <code>FormsModule</code> and <code>UserService</code> inside the <code>src/app/app.module.ts</code> file:</p>
+<pre><code class="typescript language-typescript">import { BrowserModule } from '@angular/platform-browser';
+import { NgModule } from '@angular/core';
+import { FormsModule } from '@angular/forms'; // &lt;---
+import { UserService } from './users/user.service'; // &lt;---
+
+import { AppComponent } from './app.component';
+import { UsersComponent } from './users/users.component';
+</code></pre>
+<p><code>FormsModule</code> should be listed in the <code>imports</code> section in the <code>app.module.ts</code>, whereas <code>UserService</code> goes to the <code>providers</code>:</p>
+<pre><code class="typescript language-typescript">@NgModule({
+  declarations: [
+    AppComponent,
+    UsersComponent
+  ],
+  imports: [
+    BrowserModule,
+    FormsModule // &lt;---
+  ],
+  providers: [
+    UserService // &lt;---
+  ],
+  bootstrap: [AppComponent]
+})
+</code></pre>
+<p>That&rsquo;s it! Our sample application is finished, and you can open it by running the following command:</p>
+<pre><code class="bash language-bash">ng serve --open
+</code></pre>
+<p><em>Continue reading %<a rel="nofollow" href="https://www.sitepoint.com/angular-augury-debug-code/">Using Angular Augury to Debug Your Code</a>%</em></p></div>";s:7:"content";s:9604:"<div><p><strong>Augury is an open-source tool <a href="https://augury.angular.io/pages/guides/augury.html">allowing developers to profile and debug</a> Angular 2 and 4 applications.</strong></p>
+<p>Modern web browsers provide developer consoles to inspect various elements on the page, which is really handy when trying to debug markup, styles, and scripts. However, this console isn&rsquo;t enough to debug Angular applications that usually have lots of components, events, attributes, and a separate routing system.</p>
+<p><a href="https://augury.angular.io/">Augury</a> is a tool designed specifically for Angular apps. It&rsquo;s an open-source debugging and profiling tool for <a href="http://angular.io/">Angular 2+</a> applications.</p>
+<p>Augury is just a Chrome extension that&rsquo;s quite simple to use, so you won&rsquo;t need to spend hours and hours learning how to utilize this tool. We&rsquo;re going to build a sample Angular app and then see Augury in action by exploring various parts of our project. So, let&rsquo;s get started!</p>
+<h2 id="helloaugury">Hello, Augury!</h2>
+<p>Augury visualizes your app&rsquo;s structure in a form of a tree, showing how components and their dependencies relate to each other. It also allows you to inspect properties of your objects and change them on the fly. On top of that, you can easily view the source code of a specific component, insert breakpoints as needed, work with events, and more. Lastly, you can browse the application&rsquo;s routing system, as well as view the full list of all utilized modules.</p>
+<p>Augury is only available as a Chrome extension (there&rsquo;s no Firefox support yet, unfortunately) and installing it is as simple as going to <a href="https://chrome.google.com/webstore/detail/augury/elgalmkoelokbchhkhacckoklkejnhcd">this page</a> and pressing the <em>Install</em> button. After that, you may open the developer tools by pressing <kbd>Ctrl</kbd> + <kbd>Shift</kbd> + <kbd>I</kbd> (Windows/Linux) or <kbd>Cmd</kbd> + <kbd>Opt</kbd> + <kbd>I</kbd> (macOS). You&rsquo;ll note that a new tab called <em>Augury</em> has appeared. After switching to this tab, you&rsquo;ll either see the application&rsquo;s structure or the phrase &ldquo;This application is not an Angular application&rdquo;. I&rsquo;ve noticed that sometimes it may be required to re-open the Developer Console in order for Augury to analyze the page properly, so watch out.</p>
+<p>Now that we have Augury installed, let&rsquo;s proceed to the next section and prepare the sample application that we&rsquo;ll use as a playground!</p>
+<h2 id="buildingasampleapp">Building a Sample App</h2>
+<p>In order to see Augury in action, we need something to debug, right? In this section, I&rsquo;m going to quickly guide you through the process of creating a very simple application (loosely based on the sample app from the <a href="https://angular.io/tutorial/">Angular&rsquo;s official tutorial</a>) listing some users and allowing you to edit them. Alternatively, you may grab the source code from <a href="https://github.com/bodrovis/Sitepoint-source/tree/master/Debugging_Angular_With_Augury">my GitHub repo</a>.</p>
+<p>Before getting started, install <a href="https://github.com/angular/angular-cli">Angular CLI</a> on your machine if you don&rsquo;t have it yet:</p>
+<pre><code class="bash language-bash">npm install -g @angular/cli
+</code></pre>
+<p>Next, create the skeleton of our new project:</p>
+<pre><code class="bash language-bash">ng new sitepoint-augury
+</code></pre>
+<p>Change the application&rsquo;s title by tweaking the <em>src/app/app.component.ts</em> file:</p>
+<pre><code class="typescript language-typescript">// ...
+
+export class AppComponent {
+  title = 'Augury Demo';
+}
+</code></pre>
+<p>Tweak the <code>src/app/app.component.html</code> by removing all the links to documentation added automatically by code generator and add an <code>&lt;app-users&gt;&lt;/app-users&gt;</code> line:</p>
+<pre><code class="markup language-markup">&lt;div style="text-align:center"&gt;
+  &lt;h1&gt;
+    Welcome to {{ title }}!
+  &lt;/h1&gt;
+&lt;/div&gt;
+
+&lt;app-users&gt;&lt;/app-users&gt;
+</code></pre>
+<p>Of course, we need a <code>User</code> component, so generate it now by running:</p>
+<pre><code class="bash language-bash">ng generate component users
+</code></pre>
+<p>Change the <code>src/app/users/user.component.ts</code> file in the following way:</p>
+<pre><code class="typescript language-typescript">import { Component, OnInit } from '@angular/core';
+import { User } from './user.model'; // &lt;--- 1
+import { UserService } from './user.service'; // &lt;--- 2
+
+@Component({
+  selector: 'app-users',
+  templateUrl: './users.component.html',
+  styleUrls: ['./users.component.css']
+})
+export class UsersComponent implements OnInit {
+  users: User[];
+
+  selectedUser: User;
+
+  onSelect(user: User): void { // &lt;--- 3
+    this.selectedUser = user;
+  }
+
+  constructor(private userService: UserService) { } // &lt;--- 4
+
+  ngOnInit() {
+    this.getUsers(); // &lt;--- 5
+  }
+
+  getUsers(): void { // &lt;--- 6
+    this.users = this.userService.getUsers();
+  }
+
+}
+</code></pre>
+<p>Main things to note here:</p>
+<ol><li>We are importing a <code>User</code> model that will be created in a moment.</li>
+<li>We&rsquo;re also importing a <code>UserService</code>. It will simply return a list of hardcoded users, but let&rsquo;s pretend they&rsquo;re being fetched from some remote location.</li>
+<li>We&rsquo;re allowing the users to be selected by clicking on them. The currently selected user is stored in a separate <code>selectedUser</code> attribute.</li>
+<li>Hook up the <code>userService</code> using the dependency injection mechanism.</li>
+<li>Load the list of users once the component is initialized.</li>
+<li>In order to get users, we&rsquo;re utilizing our <code>userService</code>.</li>
+</ol><p>That&rsquo;s pretty much it for this component.</p>
+<p>Next, let&rsquo;s create a model in a <code>src/app/users/user.model.ts</code> file. Each user is going to have an ID, a first and a last name:</p>
+<pre><code class="typescript language-typescript">export class User {
+  id: number;
+  first: string;
+  last: string;
+}
+</code></pre>
+<p>Nothing complex.</p>
+<p>Now let&rsquo;s proceed to the <code>UserService</code> that&rsquo;s going to be defined in the <code>app/src/users/user.service.ts</code> file:</p>
+<pre><code class="typescript language-typescript">import { Injectable } from '@angular/core';
+import { User } from './user.model';
+
+@Injectable()
+export class UserService {
+
+  constructor() { }
+
+  getUsers(): User[] {
+    return [
+      {
+        id: 1,
+        first: 'John',
+        last: 'Doe'
+      },
+      {
+        id: 2,
+        first: 'Margaret',
+        last: 'Brown'
+      }
+    ]
+  }
+}
+</code></pre>
+<p>The <code>getUsers</code> method simply returns an array of users with hardcoded data.</p>
+<p>Now let&rsquo;s display our users with the help of <code>ngFor</code>. Also, we&rsquo;re going to add a click event listener and fire <code>onSelect</code> whenever a user is clicked on. When this happens, a form to edit the chosen user should be displayed (which is going to be done with the help of <code>ngIf</code>). Modify the <code>src/app/users/user.component.html</code> file like this:</p>
+<pre><code class="javascript language-javascript">&lt;div *ngFor="let user of users" (click)="onSelect(user)"
+[class.selected]="user === selectedUser"&gt;
+  &lt;p&gt;{{user.last}}, {{user.first}} (ID: {{user.id}})&lt;/p&gt;
+&lt;/div&gt;
+
+&lt;div *ngIf="selectedUser"&gt;
+  &lt;h3&gt;Edit&lt;/h3&gt;
+  &lt;label for="first"&gt;First&lt;/label&gt;
+  &lt;input [(ngModel)]="selectedUser.first" placeholder="First name" id="first"&gt;
+
+  &lt;label for="last"&gt;Last&lt;/label&gt;
+  &lt;input [(ngModel)]="selectedUser.last" placeholder="Last name" id="last"&gt;
+&lt;/div&gt;
+</code></pre>
+<p>We&rsquo;re assigning a <code>.selected</code> CSS class to the chosen user, so let&rsquo;s add some simple styling for it inside the <code>src/app/users/user.component.css</code> file:</p>
+<pre><code class="css language-css">.selected {
+  font-weight: bold;
+}
+</code></pre>
+<p>Lastly, we have to import <code>FormsModule</code> and <code>UserService</code> inside the <code>src/app/app.module.ts</code> file:</p>
+<pre><code class="typescript language-typescript">import { BrowserModule } from '@angular/platform-browser';
+import { NgModule } from '@angular/core';
+import { FormsModule } from '@angular/forms'; // &lt;---
+import { UserService } from './users/user.service'; // &lt;---
+
+import { AppComponent } from './app.component';
+import { UsersComponent } from './users/users.component';
+</code></pre>
+<p><code>FormsModule</code> should be listed in the <code>imports</code> section in the <code>app.module.ts</code>, whereas <code>UserService</code> goes to the <code>providers</code>:</p>
+<pre><code class="typescript language-typescript">@NgModule({
+  declarations: [
+    AppComponent,
+    UsersComponent
+  ],
+  imports: [
+    BrowserModule,
+    FormsModule // &lt;---
+  ],
+  providers: [
+    UserService // &lt;---
+  ],
+  bootstrap: [AppComponent]
+})
+</code></pre>
+<p>That&rsquo;s it! Our sample application is finished, and you can open it by running the following command:</p>
+<pre><code class="bash language-bash">ng serve --open
+</code></pre>
+<p><em>Continue reading %<a rel="nofollow" href="https://www.sitepoint.com/angular-augury-debug-code/">Using Angular Augury to Debug Your Code</a>%</em></p></div>";s:6:"author";O:16:"SimplePie_Author":3:{s:4:"name";s:21:"Ilya Bodrov-Krukowski";s:4:"link";N;s:5:"email";N;}s:8:"category";s:81:"AngularJS, JavaScript, angular, Angular Resources, angular-hub, augary, debugging";s:4:"date";s:19:"2018-05-25 17:37:16";s:10:"enclosures";a:1:{i:0;O:19:"SimplePie_Enclosure":27:{s:7:"bitrate";N;s:8:"captions";N;s:10:"categories";N;s:8:"channels";N;s:9:"copyright";N;s:7:"credits";N;s:11:"description";N;s:8:"duration";N;s:10:"expression";N;s:9:"framerate";N;s:7:"handler";N;s:6:"hashes";N;s:6:"height";N;s:10:"javascript";N;s:8:"keywords";N;s:4:"lang";N;s:6:"length";N;s:4:"link";N;s:6:"medium";N;s:6:"player";N;s:7:"ratings";N;s:12:"restrictions";a:1:{i:0;O:21:"SimplePie_Restriction":3:{s:12:"relationship";s:5:"allow";s:4:"type";N;s:5:"value";s:7:"default";}}s:12:"samplingrate";N;s:10:"thumbnails";N;s:5:"title";N;s:4:"type";N;s:5:"width";N;}}}}
